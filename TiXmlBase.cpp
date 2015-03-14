@@ -1,3 +1,4 @@
+/* 类 */
 class TiXmlBase
 {
   friend class TiXmlNode;
@@ -37,7 +38,9 @@ public:
   /* 这也是个纯虚函数，用来解析实际信息。如TiXmlDeclaration::Parse()就是用来解析XML的声明 */
   virtual const char* Parse(const char* p, TiXmlParsingData* data, TiXmlEncoding encoding /*= TIXML_ENCODING_UNKNOWN */) = 0;
   
-  /* 这是用来对字符串编码的。如果字符串里有不可见字符，需进行特殊处理。有<、>等字符，转换成&lt;和&gt;等 */
+  /* 这是用来对字符串编码的。如果字符串里有不可见字符，需进行特殊处理。有<、>等字符，转换成&lt;和&gt;等
+   * 就是把特殊字符转化为实体引用
+   */
   static void EncodeString( const TIXML_STRING& str, TIXML_STRING* out );
   
   /* 这类似于#indef，从0开始定义错误码 */
@@ -78,7 +81,7 @@ protected:
   }
 
   #ifdef TIXML_USE_STL
-  static bool	StreamWhiteSpace( std::istream * in, TIXML_STRING * tag );
+  static bool StreamWhiteSpace( std::istream * in, TIXML_STRING * tag );
   static bool StreamTo( std::istream * in, int character, TIXML_STRING * tag );
   #endif
 
@@ -158,3 +161,113 @@ private:
   
   static bool condenseWhiteSpace;
 };
+
+/* 方法 */
+const char* TiXmlBase::errorString[ TiXmlBase::TIXML_ERROR_STRING_COUNT ] = 
+{
+  "No error",
+  "Error",
+  "Failed to open file",
+  "Error parsing Element.",
+  "Failed to read Element name",
+  "Error reading Element value.",
+  "Error reading Attributes.",
+  "Error: empty tag.",
+  "Error reading end tag.",
+  "Error parsing Unknown.",
+  "Error parsing Comment.",
+  "Error parsing Declaration.",
+  "Error document empty.",
+  "Error null (0) or unexpected EOF found in input stream.",
+  "Error parsing CDATA.",
+  "Error when TiXmlDocument added to document, because TiXmlDocument can only be at the root.",
+};
+
+void TiXmlBase::EncodeString( const TIXML_STRING& str, TIXML_STRING* outString )
+{
+  int i=0;
+
+  while( i<(int)str.length() )
+  {     
+    unsigned char c = (unsigned char) str[i];
+
+    if (c == '&' && i < ( (int)str.length() - 2 ) && str[i+1] == '#' && str[i+2] == 'x') 
+    {
+      while ( i<(int)str.length()-1 )
+      {                 
+        outString->append( str.c_str() + i, 1 );
+        ++i;
+        if ( str[i] == ';' )
+          break;
+      }
+    }
+    else if ( c == '&' )
+    {
+      /* 这个顺序必须与tinyxmlparser.cpp:43的TiXmlBase::Entity TiXmlBase::entity()一致 */
+      outString->append( entity[0].str, entity[0].strLength );
+      ++i;
+    }
+    else if ( c == '<' )
+    {
+      outString->append( entity[1].str, entity[1].strLength );
+      ++i;
+    }
+    else if ( c == '>' )
+    {
+      outString->append( entity[2].str, entity[2].strLength );
+      ++i;
+    }
+    else if ( c == '\"' )
+    {
+      outString->append( entity[3].str, entity[3].strLength );
+      ++i;
+    }
+    else if ( c == '\'' )
+    {
+      outString->append( entity[4].str, entity[4].strLength );
+      ++i;
+    }
+    else if ( c < 32 )
+    {
+      char buf[ 32 ];
+
+      #if defined(TIXML_SNPRINTF)   
+        TIXML_SNPRINTF( buf, sizeof(buf), "&#x%02X;", (unsigned) ( c & 0xff ) );
+      #else
+        sprintf( buf, "&#x%02X;", (unsigned) ( c & 0xff ) );
+      #endif
+
+      outString->append( buf, (int)strlen( buf ) );
+      ++i;
+    }
+    else
+    {
+      //char realc = (char) c;
+      //outString->append( &realc, 1 );
+      *outString += (char) c; // somewhat more efficient function call.
+      ++i;
+    }
+  }
+}
+
+const char* TiXmlBase::ReadName( const char* p, TIXML_STRING * name, TiXmlEncoding encoding )
+{
+  /* 有的编译器下不支持name->clear()这种模式，所以用直接赋值的方式 */
+  *name = "";
+
+  /* name的命名方式：以下划线(_)和英文字母开头，其他字符可以是数字、字母、'_'、'.'和':' */
+  if (p && *p && (IsAlpha( (unsigned char) *p, encoding ) || *p == '_' ))
+  {
+    const char* start = p; 
+    while(p && *p &&  (IsAlphaNum((unsigned char ) *p, encoding) || *p == '_' || *p == '-' || *p == '.' || *p == ':' ))
+    {
+      ++p;
+    }
+    if ( p-start > 0 ) 
+    {
+      name->assign(start, p-start );
+    }
+    return p;
+  }
+  return 0;
+}
