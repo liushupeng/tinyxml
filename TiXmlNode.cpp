@@ -205,3 +205,82 @@ private:
   TiXmlNode( const TiXmlNode& );
   void operator=( const TiXmlNode& base ); 
 };
+
+/* 方法 */
+
+/* 根据输入的字符串判断当前节点的类型 */
+TiXmlNode* TiXmlNode::Identify( const char* p, TiXmlEncoding encoding )
+{
+  TiXmlNode* returnNode = 0;
+
+  p = SkipWhiteSpace( p, encoding );
+  if( !p || !*p || *p != '<' )
+  {
+    return 0;
+  }
+
+  p = SkipWhiteSpace( p, encoding );
+
+  if ( !p || !*p )
+  {
+    return 0;
+  }
+
+  const char* xmlHeader = { "<?xml" };       /* 声明 */
+  const char* commentHeader = { "<!--" };    /* 注释 */
+  const char* dtdHeader = { "<!" };          /* 未知类型 */
+  const char* cdataHeader = { "<![CDATA[" };
+  
+  if ( StringEqual( p, xmlHeader, true, encoding ) )
+  {
+    #ifdef DEBUG_PARSER
+      TIXML_LOG( "XML parsing Declaration\n" );
+    #endif
+    returnNode = new TiXmlDeclaration();
+  }
+  else if ( StringEqual( p, commentHeader, false, encoding ) )
+  {
+    #ifdef DEBUG_PARSER
+      TIXML_LOG( "XML parsing Comment\n" );
+    #endif
+    returnNode = new TiXmlComment();
+  }
+  else if ( StringEqual( p, cdataHeader, false, encoding ) )
+  {
+    #ifdef DEBUG_PARSER
+      TIXML_LOG( "XML parsing CDATA\n" );
+    #endif
+    TiXmlText* text = new TiXmlText( "" );
+    text->SetCDATA( true );
+    returnNode = text;
+  }
+  else if ( StringEqual( p, dtdHeader, false, encoding ) )
+  {
+    #ifdef DEBUG_PARSER
+      TIXML_LOG( "XML parsing Unknown(1)\n" );
+    #endif
+    returnNode = new TiXmlUnknown();
+  }
+  else if (IsAlpha( *(p+1), encoding ) || *(p+1) == '_' )
+  {
+    #ifdef DEBUG_PARSER
+      TIXML_LOG( "XML parsing Element\n" );
+    #endif
+    returnNode = new TiXmlElement( "" );
+  }
+  else
+  {
+    #ifdef DEBUG_PARSER
+      TIXML_LOG( "XML parsing Unknown(2)\n" );
+    #endif
+    returnNode = new TiXmlUnknown();
+  }
+
+  if (returnNode)
+  {
+    // Set the parent, so it can report errors
+    returnNode->parent = this;
+  }
+  return returnNode;
+}
+
